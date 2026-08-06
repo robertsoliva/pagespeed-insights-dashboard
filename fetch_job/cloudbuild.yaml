@@ -1,0 +1,5 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-f", "fetch_job/Dockerfile", "-t", "${_IMAGE_URI}", "."]
+images:
+  - "${_IMAGE_URI}"

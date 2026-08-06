@@ -1,0 +1,23 @@
+[project]
+name = "pagespeed-insights-dashboard"
+version = "0.1.0"
+description = "Open-source, self-hosted PageSpeed Insights monitoring: scheduled Cloud Run fetch job + BigQuery storage + Streamlit dashboard."
+requires-python = ">=3.11"
+dependencies = [
+    "google-cloud-bigquery>=3.25.0",
+    "google-auth>=2.34.0",
+    "requests>=2.32.0",
+    "typer>=0.12.5",
+    "streamlit>=1.38.0",
+    "pandas>=2.2.0",
+    "plotly>=5.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "responses>=0.25.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["common*", "setup*", "dashboard*", "fetch_job*"]

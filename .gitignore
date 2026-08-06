@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.egg-info/
+.DS_Store
+*.key.json
+service-account*.json
+.streamlit/secrets.toml
+dist/
+build/
+.pytest_cache/
