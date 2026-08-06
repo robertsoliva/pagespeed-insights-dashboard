@@ -150,4 +150,12 @@ if st.button("Deploy Cloud Run Job + Scheduler", disabled=not ready, type="prima
     else:
         st.success("Deployed.")
         st.json(result)
-        st.caption("Run the dashboard with: streamlit run dashboard/app.py")
+
+        st.session_state.update(connected=True, project=project, dataset=dataset, table=table)
+
+        try:
+            st.page_link("dashboard/app.py", label="Open Dashboard →", icon="📈")
+        except Exception:
+            # Only resolves inside the combined multipage app (streamlit run app.py).
+            # Standalone (streamlit run setup/streamlit_app.py) falls back to this:
+            st.caption("Run the dashboard with: streamlit run dashboard/app.py")

@@ -80,19 +80,26 @@ python -m setup.cli deploy \
     --psi-api-key "$PSI_API_KEY"
 ```
 
-Or the Streamlit wizard:
+Or the Streamlit wizard -- Setup and Dashboard as one app, sharing session
+state, so a successful deploy hands the resulting project/dataset/table
+straight to the Dashboard page with one click:
+
+```bash
+streamlit run app.py
+```
+
+Each page also runs standalone if you only want one of the two:
 
 ```bash
 streamlit run setup/streamlit_app.py
+streamlit run dashboard/app.py
 ```
 
 ## View the dashboard
 
-```bash
-streamlit run dashboard/app.py
-```
-
-Enter the same project/dataset/table in the sidebar and connect.
+In the sidebar, click "Load my GCP projects" and pick your way down through
+project → dataset → table (the same picker the Setup page uses), or type
+them directly if you'd rather skip the `gcloud` round-trip.
 
 ## IAM model
 

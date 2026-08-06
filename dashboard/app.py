@@ -15,9 +15,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from common.bigquery_schema import CONFIG_TABLE_NAME
 from common.metrics_spec import TIER_LABELS, Tier, metrics_by_tier
 from dashboard.kpi_config import STATUS_COLORS, classify, format_value
 from dashboard.queries import get_trend_data, list_urls
+from setup.core import list_bq_datasets, list_bq_tables, list_gcp_projects
 
 st.set_page_config(page_title="PageSpeed Insights Dashboard", page_icon="📈", layout="wide")
 
@@ -26,11 +28,40 @@ ALL_URLS_LABEL = "All URLs (average)"
 
 st.title("PageSpeed Insights Dashboard")
 
+def _pick(label: str, options: list[str], current: str, fallback_default: str = "") -> str:
+    """Selectbox when GCP gave us real options, text input otherwise -- and
+    keep whatever was already connected (e.g. handed off from Setup) selected."""
+    if options:
+        index = options.index(current) if current in options else 0
+        return st.selectbox(label, options, index=index)
+    return st.text_input(label, value=current or fallback_default)
+
+
 with st.sidebar:
     st.header("Connection")
-    project = st.text_input("GCP project", value=st.session_state.get("project", ""))
-    dataset = st.text_input("Dataset", value=st.session_state.get("dataset", "psi_monitor"))
-    table = st.text_input("Table", value=st.session_state.get("table", "psi_metrics"))
+
+    if st.button("Load my GCP projects"):
+        with st.spinner("Listing projects via gcloud..."):
+            try:
+                st.session_state["projects"] = list_gcp_projects()
+            except Exception as exc:
+                st.error(f"Couldn't list projects (is `gcloud auth login` done?): {exc}")
+
+    project_ids = [p["projectId"] for p in st.session_state.get("projects", [])]
+    project = _pick("GCP project", project_ids, st.session_state.get("project", ""))
+
+    try:
+        datasets = list_bq_datasets(project) if project else []
+    except Exception:
+        datasets = []
+    dataset = _pick("Dataset", datasets, st.session_state.get("dataset", ""), fallback_default="psi_monitor")
+
+    try:
+        tables = [t for t in list_bq_tables(project, dataset) if t != CONFIG_TABLE_NAME] if project and dataset else []
+    except Exception:
+        tables = []
+    table = _pick("Table", tables, st.session_state.get("table", ""), fallback_default="psi_metrics")
+
     if st.button("Connect") or st.session_state.get("connected"):
         st.session_state.update(connected=True, project=project, dataset=dataset, table=table)
 
