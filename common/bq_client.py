@@ -29,7 +29,9 @@ def ensure_dataset(client: bigquery.Client, project: str, dataset: str, location
         client.get_dataset(dataset_ref)
     except NotFound:
         logger.info("Creating BigQuery dataset %s.%s", project, dataset)
-        client.create_dataset(bigquery.Dataset(dataset_ref, location=location))
+        new_dataset = bigquery.Dataset(dataset_ref)
+        new_dataset.location = location
+        client.create_dataset(new_dataset)
 
 
 def ensure_metrics_table(client: bigquery.Client, project: str, dataset: str, table: str) -> None:

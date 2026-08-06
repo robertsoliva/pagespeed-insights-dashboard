@@ -218,12 +218,36 @@ def ensure_apis_enabled(plan: DeploymentPlan, log: LogFn = _default_log) -> None
         "run.googleapis.com",
         "cloudscheduler.googleapis.com",
         "cloudbuild.googleapis.com",
+        "compute.googleapis.com",  # Cloud Build's managed workers need this enabled on the project
         "artifactregistry.googleapis.com",
         "bigquery.googleapis.com",
         "secretmanager.googleapis.com",
         "iam.googleapis.com",
     ]
     run_gcloud(["services", "enable", *apis, f"--project={plan.project}"], log=log)
+
+
+def ensure_cloud_build_permissions(plan: DeploymentPlan, log: LogFn = _default_log) -> None:
+    """Since mid-2024, GCP no longer auto-grants Editor to a new project's
+    default Compute Engine service account -- which `gcloud builds submit`
+    uses as its default build identity unless told otherwise. Without this,
+    the build fails trying to read its own uploaded source tarball back out
+    of the Cloud Build staging bucket. Every fresh project needs this grant
+    once; the binding is idempotent to re-apply."""
+    project_number = run_gcloud(
+        ["projects", "describe", plan.project, "--format=value(projectNumber)"], log=log
+    )
+    compute_sa = f"{project_number}-compute@developer.gserviceaccount.com"
+    _with_retry(
+        lambda: run_gcloud([
+            "projects", "add-iam-policy-binding", plan.project,
+            f"--member=serviceAccount:{compute_sa}",
+            "--role=roles/cloudbuild.builds.builder",
+            "--condition=None",
+        ], log=log),
+        description=f"Grant cloudbuild.builds.builder to {compute_sa}",
+        log=log,
+    )
 
 
 def ensure_artifact_repo(plan: DeploymentPlan, log: LogFn = _default_log) -> None:
@@ -426,6 +450,7 @@ def provision(plan: DeploymentPlan, repo_root: str, log: LogFn = _default_log) -
 
     ensure_apis_enabled(plan, log=log)
     ensure_artifact_repo(plan, log=log)
+    ensure_cloud_build_permissions(plan, log=log)
     image_uri = build_and_push_image(plan, repo_root, log=log)
     log(f"Built and pushed image: {image_uri}")
 

@@ -137,7 +137,7 @@ def render_tier(tier: Tier, expanded: bool) -> None:
                 xaxis=dict(showgrid=False),
                 yaxis=dict(gridcolor="rgba(128,128,128,0.15)"),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
 
 render_tier(Tier.CORE_WEB_VITALS, expanded=True)
