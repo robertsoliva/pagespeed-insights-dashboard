@@ -97,9 +97,35 @@ streamlit run dashboard/app.py
 
 ## View the dashboard
 
-In the sidebar, click "Load my GCP projects" and pick your way down through
-project → dataset → table (the same picker the Setup page uses), or type
-them directly if you'd rather skip the `gcloud` round-trip.
+**Opening it again later:** setup is a one-time step per site -- once
+deployed, the Cloud Run Job and Cloud Scheduler trigger keep running on
+their own in GCP, with nothing left running on your machine. To check on it
+again another day, you don't need to redeploy anything, just:
+
+```bash
+streamlit run app.py
+```
+
+and open the **Dashboard** tab in the sidebar. In the sidebar, click "Load
+my GCP projects" and pick your way down through project → dataset → table
+(the same picker the Setup page uses), or type them directly if you'd
+rather skip the `gcloud` round-trip.
+
+**Give it a few runs before judging the trends:** right after deploying,
+the dashboard will be empty (or show a single flat data point) until Cloud
+Scheduler has actually fired -- which, depending on the interval you chose
+in Setup, could be up to that many hours away. The whole point of this tool
+is trends over time, so a single run isn't very informative yet. To see
+movement sooner without waiting, trigger the Cloud Run Job manually a few
+times:
+
+```bash
+gcloud run jobs execute <cloud-run-job-name> --region <region>
+```
+
+(the job and region names are in the JSON Setup prints when it finishes
+deploying). The dashboard itself will also tell you when it's working with
+too few runs to be meaningful yet.
 
 ## IAM model
 

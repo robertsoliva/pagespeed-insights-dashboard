@@ -76,7 +76,13 @@ except Exception as exc:
     st.stop()
 
 if not urls:
-    st.warning("No data yet — the Cloud Run Job hasn't run, or hasn't succeeded yet.")
+    st.warning(
+        "No data yet. The Cloud Run Job only runs on Cloud Scheduler's cadence "
+        "(whatever interval you picked in Setup), so if you just deployed, the "
+        "first row can take up to that long to show up. To check sooner, trigger "
+        "it manually:\n\n"
+        "```\ngcloud run jobs execute <cloud-run-job-name> --region <region>\n```"
+    )
     st.stop()
 
 with st.sidebar:
@@ -103,6 +109,14 @@ else:
     df = df.sort_values("fetched_at")
 
 st.caption(f"{len(df)} runs · {device.title()} · {url_choice} · last {lookback_days} days")
+
+if len(df) < 3:
+    st.info(
+        f"Only {len(df)} run{'s' if len(df) != 1 else ''} so far, so trend lines below "
+        "are mostly flat or a single point. They'll fill in as Cloud Scheduler keeps "
+        "firing on its interval -- or trigger a few more runs manually "
+        "(`gcloud run jobs execute ...`) to see movement sooner."
+    )
 
 tiers = metrics_by_tier()
 
