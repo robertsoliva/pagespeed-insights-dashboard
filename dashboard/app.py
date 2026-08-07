@@ -11,6 +11,8 @@ Run with: streamlit run dashboard/app.py
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -25,6 +27,9 @@ st.set_page_config(page_title="PageSpeed Insights Dashboard", page_icon="📈", 
 
 CHART_LINE_COLOR = "#2a78d6"  # categorical slot 1 -- single series per chart, no legend needed
 ALL_URLS_LABEL = "All URLs (average)"
+ALL_SECTIONS_LABEL = "All Website"
+HOME_SECTION = "Home"
+OTHER_SECTION = "Other pages"
 
 st.title("PageSpeed Insights Dashboard")
 
@@ -35,6 +40,30 @@ def _pick(label: str, options: list[str], current: str, fallback_default: str = 
         index = options.index(current) if current in options else 0
         return st.selectbox(label, options, index=index)
     return st.text_input(label, value=current or fallback_default)
+
+
+def _normalize(url: str) -> str:
+    return url.strip().rstrip("/")
+
+
+def _group_by_section(urls: list[str]) -> dict[str, list[str]]:
+    """Group tracked URLs by first path segment, e.g. root/A/* -> section "A".
+    A first segment only counts as a section if something is nested under it
+    (root/A/ alone doesn't); otherwise the page is a one-off in "Other pages".
+    The root page itself is always "Home"."""
+    path_segments = {url: [s for s in urlparse(url).path.strip("/").split("/") if s] for url in urls}
+    section_names = {segments[0] for segments in path_segments.values() if len(segments) >= 2}
+
+    sections: dict[str, list[str]] = {}
+    for url, segments in path_segments.items():
+        if not segments:
+            section = HOME_SECTION
+        elif segments[0] in section_names:
+            section = segments[0]
+        else:
+            section = OTHER_SECTION
+        sections.setdefault(section, []).append(url)
+    return sections
 
 
 with st.sidebar:
@@ -85,14 +114,51 @@ if not urls:
     )
     st.stop()
 
+sections = _group_by_section(urls)
+section_names = sorted(s for s in sections if s not in (HOME_SECTION, OTHER_SECTION))
+section_options = [ALL_SECTIONS_LABEL]
+section_options += [s for s in (HOME_SECTION,) if s in sections]
+section_options += section_names
+section_options += [s for s in (OTHER_SECTION,) if s in sections]
+
 with st.sidebar:
     st.header("Filters")
     device = st.radio("Device", ["mobile", "desktop"], format_func=str.title, horizontal=True)
-    url_choice = st.selectbox("URL", [ALL_URLS_LABEL, *urls])
+    section_choice = st.selectbox("Website section", section_options)
+    section_urls = urls if section_choice == ALL_SECTIONS_LABEL else sections[section_choice]
+    url_choice = st.selectbox("URL", [ALL_URLS_LABEL, *section_urls])
+    custom_url = st.text_input(
+        "Or jump to a specific URL",
+        placeholder="https://example.com/some/page",
+        help="Overrides the section/URL filters above. Must match a tracked URL.",
+    )
     lookback_days = st.slider("Lookback window (days)", 1, 90, 14)
 
-selected_url = None if url_choice == ALL_URLS_LABEL else url_choice
-df = get_trend_data(project, dataset, table, device, lookback_days, selected_url)
+selected_url: str | None = None
+selected_urls: list[str] | None = None
+filter_label = ALL_SECTIONS_LABEL
+
+custom_url = custom_url.strip()
+if custom_url:
+    url_lookup = {_normalize(u): u for u in urls}
+    match = url_lookup.get(_normalize(custom_url))
+    if match:
+        selected_url = match
+        filter_label = match
+    else:
+        st.sidebar.error(f"'{custom_url}' isn't a tracked URL -- falling back to the filters above.")
+
+if selected_url is None:
+    if url_choice != ALL_URLS_LABEL:
+        selected_url = url_choice
+        filter_label = url_choice
+    elif section_choice != ALL_SECTIONS_LABEL:
+        selected_urls = section_urls
+        filter_label = f"{section_choice} ({len(section_urls)} pages, average)"
+    else:
+        filter_label = ALL_URLS_LABEL
+
+df = get_trend_data(project, dataset, table, device, lookback_days, url=selected_url, urls=selected_urls)
 
 if df.empty:
     st.warning("No data in this window yet. Try a longer lookback window.")
@@ -108,7 +174,7 @@ if selected_url is None:
 else:
     df = df.sort_values("fetched_at")
 
-st.caption(f"{len(df)} runs · {device.title()} · {url_choice} · last {lookback_days} days")
+st.caption(f"{len(df)} runs · {device.title()} · {filter_label} · last {lookback_days} days")
 
 if len(df) < 3:
     st.info(

@@ -15,8 +15,16 @@ def list_urls(project: str, dataset: str, table: str) -> list[str]:
 
 
 def get_trend_data(
-    project: str, dataset: str, table: str, device: str, lookback_days: int, url: str | None = None
+    project: str,
+    dataset: str,
+    table: str,
+    device: str,
+    lookback_days: int,
+    url: str | None = None,
+    urls: list[str] | None = None,
 ) -> pd.DataFrame:
+    """Fetch trend rows. `url` filters to one exact page; `urls` filters to a
+    group (e.g. a website section); passing neither returns every page."""
     client = get_client(project)
     where = ["device = @device", "fetched_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY)"]
     params = [
@@ -26,6 +34,9 @@ def get_trend_data(
     if url:
         where.append("url = @url")
         params.append(bigquery.ScalarQueryParameter("url", "STRING", url))
+    elif urls:
+        where.append("url IN UNNEST(@urls)")
+        params.append(bigquery.ArrayQueryParameter("urls", "STRING", urls))
 
     query = f"SELECT * FROM `{project}.{dataset}.{table}` WHERE {' AND '.join(where)} ORDER BY fetched_at"
     return client.query(query, job_config=bigquery.QueryJobConfig(query_parameters=params)).to_dataframe()
