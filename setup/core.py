@@ -154,6 +154,28 @@ def list_bq_tables(project: str, dataset: str) -> list[str]:
     return [t.table_id for t in client.list_tables(dataset)]
 
 
+def create_psi_api_key(project: str, log: LogFn = _default_log) -> str:
+    """Creates a PageSpeed Insights API key, restricted to just that one API,
+    directly in the given project -- the same handful of clicks a user would
+    otherwise make in the Cloud Console, as one gcloud round-trip. The key
+    isn't tied to this project in any functional sense (PSI is a public API;
+    a key from any project would work), but generating it here means one
+    less context-switch during setup."""
+    run_gcloud([
+        "services", "enable", "pagespeedonline.googleapis.com", "apikeys.googleapis.com",
+        f"--project={project}",
+    ], log=log)
+    display_name = f"psi-monitor-{uuid.uuid4().hex[:8]}"
+    key_string = run_gcloud([
+        "services", "api-keys", "create",
+        f"--display-name={display_name}",
+        "--api-target=service=pagespeedonline.googleapis.com",
+        f"--project={project}",
+        "--format=value(response.keyString)",
+    ], log=log)
+    return key_string.strip()
+
+
 # --------------------------------------------------------------------------
 # Scheduling
 # --------------------------------------------------------------------------

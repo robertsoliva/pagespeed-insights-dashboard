@@ -5,12 +5,39 @@ URLs (or a whole domain), pick how often to check, and it deploys a scheduled
 Cloud Run Job that writes results into BigQuery, plus a Streamlit dashboard
 to visualize the trend.
 
+## Quick start
+
+Setup and the dashboard are two tabs of **one running app** -- this is the
+only command you need for the whole journey, both the first time and every
+time after:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+streamlit run app.py
+```
+
+That opens a browser tab with **Setup** and **Dashboard** in the sidebar:
+
+1. **Setup** -- a one-time step per site: upload a CSV of URLs or give it a
+   domain, pick a run interval, connect to your GCP project, and deploy.
+   (See Prerequisites below for what needs to be in place first.)
+2. **Dashboard** -- once deployed, switch to this tab to see the trends.
+   Come back here later with the same `streamlit run app.py` command --
+   nothing needs redeploying, the Cloud Run Job and Scheduler keep running
+   in GCP on their own. Right after deploying it'll be empty or a single
+   flat point; see "View the dashboard" below for why, and how to skip the
+   wait.
+
+Don't have `gcloud` set up yet, or want the CLI instead for scripting? Keep
+reading -- everything below covers both paths in more detail.
+
 ## How it works
 
 1. **Setup** (CLI or Streamlit wizard) — upload a CSV of URLs, or give it a
    root domain to monitor in full (discovered via `sitemap.xml`, falling
    back to a robots.txt-respecting crawl, capped at a max page count).
-2. Pick a run interval (every 1–24 hours).
+2. Pick a run interval (every 1–24 hours; 2–6h recommended, see below).
 3. Connect to your GCP project (via `gcloud`/Application Default
    Credentials — no key files).
 4. Pick or create a BigQuery dataset + table to append results to.
@@ -51,7 +78,9 @@ tests/          Unit tests (pytest).
   Service Account Admin, Project IAM Admin, and BigQuery admin roles). This
   is a one-time cost to the person running setup — see below for what the
   deployed resources themselves actually run as.
-- A [PageSpeed Insights API key](https://developers.google.com/speed/docs/insights/v5/get-started).
+- A [PageSpeed Insights API key](https://developers.google.com/speed/docs/insights/v5/get-started) --
+  or skip getting one yourself: both the wizard and the CLI (`create-key`)
+  can generate one restricted to your chosen project in one step.
 
 ## Install
 
@@ -62,54 +91,58 @@ pip install -e ".[dev]"
 
 ## Provision a monitoring job
 
-CLI:
-
-```bash
-# From a CSV of URLs, checked every 6 hours
-python -m setup.cli deploy \
-    --project my-gcp-project --region us-central1 \
-    --csv urls.csv --interval-hours 6 \
-    --dataset psi_monitor --table psi_metrics \
-    --psi-api-key "$PSI_API_KEY"
-
-# Whole-site monitoring via sitemap/crawl discovery, checked daily
-python -m setup.cli deploy \
-    --project my-gcp-project --region us-central1 \
-    --domain example.com --interval-hours 24 \
-    --dataset psi_monitor --table psi_metrics \
-    --psi-api-key "$PSI_API_KEY"
-```
-
-Or the Streamlit wizard -- Setup and Dashboard as one app, sharing session
-state, so a successful deploy hands the resulting project/dataset/table
-straight to the Dashboard page with one click:
-
-```bash
-streamlit run app.py
-```
-
-Each page also runs standalone if you only want one of the two:
+**The Streamlit wizard is the primary path** -- see Quick start above:
+`streamlit run app.py`, then the Setup tab. It walks through source (CSV or
+domain), interval, GCP project, a PageSpeed API key (paste your own, or
+generate one for the selected project with one click), and the BigQuery
+destination, then deploys. Each page also runs standalone if you only want
+one of the two:
 
 ```bash
 streamlit run setup/streamlit_app.py
 streamlit run dashboard/app.py
 ```
 
-## View the dashboard
+### Alternative: CLI
 
-**Opening it again later:** setup is a one-time step per site -- once
-deployed, the Cloud Run Job and Cloud Scheduler trigger keep running on
-their own in GCP, with nothing left running on your machine. To check on it
-again another day, you don't need to redeploy anything, just:
+For scripting or CI, `setup/cli.py` does the same thing non-interactively:
 
 ```bash
-streamlit run app.py
+# No PSI API key yet? Generate one restricted to this project:
+python -m setup.cli create-key --project my-gcp-project
+
+# From a CSV of URLs, checked every 4 hours (2-6h recommended, see below)
+python -m setup.cli deploy \
+    --project my-gcp-project --region us-central1 \
+    --csv urls.csv --interval-hours 4 \
+    --dataset psi_monitor --table psi_metrics \
+    --psi-api-key "$PSI_API_KEY"
+
+# Whole-site monitoring via sitemap/crawl discovery, checked every 6 hours
+python -m setup.cli deploy \
+    --project my-gcp-project --region us-central1 \
+    --domain example.com --interval-hours 6 \
+    --dataset psi_monitor --table psi_metrics \
+    --psi-api-key "$PSI_API_KEY"
 ```
 
-and open the **Dashboard** tab in the sidebar. In the sidebar, click "Load
-my GCP projects" and pick your way down through project → dataset → table
-(the same picker the Setup page uses), or type them directly if you'd
-rather skip the `gcloud` round-trip.
+### Picking an interval
+
+PageSpeed scores vary run to run even with nothing changed on the site --
+network jitter, host load, and Lighthouse's own simulated throttling all add
+noise. A single check a day can't tell a real regression from a one-off
+fluke, so **2-6 hours is the recommended range**: enough samples per day to
+see a genuine pattern, without over-polling. Both the wizard and the CLI
+default to 4 hours.
+
+## View the dashboard
+
+In the sidebar, click "Load my GCP projects" and pick your way down through
+project → dataset → table (the same picker the Setup page uses), or type
+them directly if you'd rather skip the `gcloud` round-trip. Setup hands
+these over automatically if you just deployed in the same session -- this
+picker is for opening the dashboard fresh, or pointing it at a different
+site.
 
 **Give it a few runs before judging the trends:** right after deploying,
 the dashboard will be empty (or show a single flat data point) until Cloud

@@ -17,6 +17,7 @@ import streamlit as st
 from setup.core import (
     DeploymentPlan,
     ProvisioningError,
+    create_psi_api_key,
     list_bq_datasets,
     list_bq_tables,
     list_gcp_projects,
@@ -30,6 +31,10 @@ REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 st.set_page_config(page_title="PSI Monitor Setup", page_icon="⚙️", layout="centered")
 st.title("PageSpeed Insights Monitor — Setup")
 st.caption("Provisions BigQuery tables, a Cloud Run Job, and a Cloud Scheduler trigger for scheduled PageSpeed monitoring.")
+st.info(
+    "**This is a one-time step per site.** Already deployed a monitoring job? "
+    "You don't need to run this again — switch to the **Dashboard** tab instead."
+)
 
 # --- 1. What to monitor ------------------------------------------------------
 st.header("1. What to monitor")
@@ -61,11 +66,17 @@ else:
 
 # --- 2. How often -------------------------------------------------------------
 st.header("2. How often")
-interval_hours = st.select_slider("Run every N hours", options=[1, 2, 3, 4, 6, 8, 12, 24], value=6)
+st.caption(
+    "PageSpeed scores vary run to run even when nothing on the site changed "
+    "(network jitter, host load, Lighthouse's own simulated throttling). A "
+    "single check a day can't tell a real regression from a fluke — "
+    "**2–6 hours is the recommended range** so each day has enough samples "
+    "to see a real pattern."
+)
+interval_hours = st.select_slider("Run every N hours", options=[1, 2, 3, 4, 6, 8, 12, 24], value=4)
 
 # --- 3. Connect to GCP ---------------------------------------------------------
 st.header("3. Connect to GCP")
-psi_api_key = st.text_input("PageSpeed Insights API key", type="password", help="Stored in Secret Manager, never in plain env vars.")
 
 if st.button("Load my GCP projects"):
     with st.spinner("Listing projects via gcloud..."):
@@ -79,8 +90,33 @@ project_ids = [p["projectId"] for p in projects]
 project = st.selectbox("GCP project", project_ids) if project_ids else st.text_input("GCP project ID")
 region = st.selectbox("Region", ["us-central1", "europe-west1", "asia-southeast1", "us-east1"], index=0)
 
-# --- 4. BigQuery destination ---------------------------------------------------
-st.header("4. Choose a BigQuery destination")
+# --- 4. PageSpeed Insights API key ----------------------------------------------
+st.header("4. PageSpeed Insights API key")
+
+if project and st.button("Generate a key for this project"):
+    with st.spinner("Enabling the PSI API and creating a restricted key..."):
+        try:
+            st.session_state["generated_psi_key"] = create_psi_api_key(project)
+        except Exception as exc:
+            st.error(f"Couldn't create a key: {exc}")
+    if st.session_state.get("generated_psi_key"):
+        st.success("Key generated below — stored in Secret Manager on deploy, never written to disk here.")
+elif not project:
+    st.caption("Pick a GCP project above to generate a key automatically, or paste your own below.")
+
+st.caption(
+    "Don't have one and would rather get it yourself? "
+    "[Get a free PageSpeed Insights API key](https://developers.google.com/speed/docs/insights/v5/get-started)."
+)
+psi_api_key = st.text_input(
+    "PageSpeed Insights API key",
+    value=st.session_state.get("generated_psi_key", ""),
+    type="password",
+    help="Stored in Secret Manager, never in plain env vars.",
+)
+
+# --- 5. BigQuery destination ---------------------------------------------------
+st.header("5. Choose a BigQuery destination")
 
 dataset_mode = st.radio("Dataset", ["Select existing", "Create new"], horizontal=True)
 if dataset_mode == "Select existing" and project:
@@ -113,8 +149,8 @@ with st.expander("Advanced: service accounts"):
     fetch_service_account = st.text_input("Fetch job service account (optional)") or None
     scheduler_service_account = st.text_input("Scheduler invoker service account (optional)") or None
 
-# --- 5. Deploy -------------------------------------------------------------
-st.header("5. Deploy")
+# --- 6. Deploy -------------------------------------------------------------
+st.header("6. Deploy")
 ready = bool(project and dataset and table and psi_api_key and (urls or domain))
 if not ready:
     st.info("Fill in the steps above to enable deployment.")

@@ -2,17 +2,25 @@
 
 Examples:
 
-    # From a CSV of URLs, checked every 6 hours
+    # No PSI API key yet? Generate one restricted to this project:
+    python -m setup.cli create-key --project my-gcp-project
+
+    # From a CSV of URLs, checked every 4 hours
     python -m setup.cli deploy \\
         --project my-gcp-project --region us-central1 \\
-        --csv urls.csv --interval-hours 6 \\
+        --csv urls.csv --interval-hours 4 \\
         --dataset psi_monitor --table psi_metrics
 
-    # Whole-site monitoring via sitemap/crawl discovery, checked daily
+    # Whole-site monitoring via sitemap/crawl discovery, checked every 6 hours
     python -m setup.cli deploy \\
         --project my-gcp-project --region us-central1 \\
-        --domain example.com --interval-hours 24 \\
+        --domain example.com --interval-hours 6 \\
         --dataset psi_monitor --table psi_metrics
+
+PageSpeed scores vary run to run even with nothing changed on the site
+(network jitter, host load, Lighthouse's own simulated throttling) -- a
+single check a day can't tell a real regression from a fluke, so
+--interval-hours defaults to 4; 2-6 hours is the recommended range.
 
 Requires `gcloud auth login` and `gcloud auth application-default login` to
 have been run already, and PSI_API_KEY set in the environment (or passed via
@@ -29,6 +37,7 @@ import typer
 from setup.core import (
     DeploymentPlan,
     ProvisioningError,
+    create_psi_api_key,
     list_bq_datasets,
     list_bq_tables,
     list_gcp_projects,
@@ -63,6 +72,13 @@ def list_tables(project: str, dataset: str) -> None:
 
 
 @app.command()
+def create_key(project: str) -> None:
+    """Generate a PageSpeed Insights API key restricted to just that API, in this project."""
+    key = create_psi_api_key(project)
+    typer.echo(key)
+
+
+@app.command()
 def preview_domain(domain: str, max_pages: int = 200) -> None:
     """Preview which URLs would be discovered for a domain (sitemap/crawl), no PSI calls."""
     urls = preview_domain_urls(domain, max_pages)
@@ -77,7 +93,9 @@ def deploy(
     region: str = typer.Option("us-central1", help="GCP region for Cloud Run/Scheduler/Artifact Registry"),
     dataset: str = typer.Option(..., help="BigQuery dataset (created if missing)"),
     table: str = typer.Option(..., help="BigQuery table to append metrics to (created if missing)"),
-    interval_hours: int = typer.Option(..., min=1, max=24, help="How often to run, in hours (1-24)"),
+    interval_hours: int = typer.Option(
+        4, min=1, max=24, help="How often to run, in hours (1-24). 2-6 recommended -- see module docstring."
+    ),
     csv: str | None = typer.Option(None, help="Path to a CSV of URLs to monitor"),
     domain: str | None = typer.Option(None, help="Root domain to monitor in full (sitemap/crawl discovery)"),
     max_crawl_pages: int = typer.Option(200, help="Cap on discovered URLs when --domain is used"),
